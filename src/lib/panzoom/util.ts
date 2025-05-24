@@ -11,22 +11,38 @@ export const panzoomStore = writable<PanZoom | undefined>(undefined);
 export function initPanzoom(node: HTMLElement) {
   container = node;
   pz = panzoom(node, {
-    bounds: false,
-    maxZoom: 10,
-    minZoom: 0.1,
+    bounds: true,
+    boundsPadding: 0.05,
+    maxZoom: 6,
+    minZoom: 0.5,
     zoomDoubleClickSpeed: 1,
     enableTextSelection: true,
+
     beforeMouseDown: (e) => {
-      const target = e.target as HTMLElement;
-      // Check if the target is a text box or a child of a text box
-      const isTextBox = target.classList.contains('textBox') || 
-                        target.closest('.textBox') !== null;
-      // Return true to prevent panning when clicking on text boxes
-      // This allows text selection within text boxes
-      return isTextBox;
+         let shouldIgnore = disablePanzoomOnElement(e.target) ||
+            (e.target.closest('.textBox') !== null) ||
+            (state.ctrlToPan && !e.ctrlKey);
+        return shouldIgnore;
     },
-    beforeWheel: (e) => e.altKey,
-    onTouch: (e) => e.touches.length > 1,
+    beforeWheel: (e) => {
+        const popupDict = document.querySelector('.migaku-popup');
+        const isWithinPopupDict = popupDict ? popupDict.contains(e.target) : false;
+
+        let shouldIgnore = disablePanzoomOnElement(e.target) || !e.altKey || isWithinPopupDict;
+
+        return shouldIgnore;
+    },
+    onTouch: (e) => {
+            if (disablePanzoomOnElement(e.target)) {
+            e.stopPropagation();
+            return false;
+        }
+
+        if (e.touches.length > 1) {
+            return true;
+        } else {
+            return false;
+        }},
     // Panzoom typing is wrong here
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error
@@ -46,6 +62,22 @@ export function initPanzoom(node: HTMLElement) {
 
   pz.on('pan', () => keepInBounds());
   pz.on('zoom', () => keepInBounds());
+
+  /* Trackpad scroll panning */
+window.addEventListener('wheel', function (e) {
+    const popupDict = document.querySelector('.migaku-popup');
+    const isWithinPopupDict = popupDict ? popupDict.contains(e.target) : false;
+
+    if (!isWithinPopupDict) {
+        const transforms = pz.getTransform();
+        pz.moveTo(
+            transforms.x,
+            transforms.y - e.deltaY,
+        );
+    }
+}, {
+    passive: true
+});
 }
 
 type PanX = 'left' | 'center' | 'right';
